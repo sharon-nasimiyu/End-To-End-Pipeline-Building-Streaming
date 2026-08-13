@@ -1,0 +1,9 @@
+version: 2
+
+sources:
+  - name: raw
+    database: analytics
+    schema: analytics
+    tables:
+      - name: economic_observations
+        description: "Raw CDC data replicated from PostgreSQL through Debezium and Kafka into ClickHouse."

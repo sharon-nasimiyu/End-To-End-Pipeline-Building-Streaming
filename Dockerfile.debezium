@@ -1,0 +1,15 @@
+FROM quay.io/debezium/connect:3.0
+
+USER root
+
+RUN mkdir -p /kafka/connect/confluent-avro
+
+RUN curl -L --fail -o /tmp/confluent.tar.gz \
+    https://packages.confluent.io/archive/7.7/confluent-community-7.7.7.tar.gz \
+    && tar -xzf /tmp/confluent.tar.gz -C /tmp \
+    && cp -L /tmp/confluent-7.7.7/share/java/kafka-serde-tools/*.jar /kafka/connect/confluent-avro/ \
+    && cp -L /tmp/confluent-7.7.7/share/java/schema-registry/*.jar /kafka/connect/confluent-avro/ \
+    && rm -rf /tmp/confluent-7.7.7 /tmp/confluent.tar.gz \
+    && chown -R kafka:kafka /kafka/connect/confluent-avro
+
+USER kafka

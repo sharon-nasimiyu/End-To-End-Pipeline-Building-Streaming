@@ -1,0 +1,18 @@
+version: 2
+
+models:
+  - name: fct_economic_observations
+    description: "Analytics-ready economic observations."
+
+    columns:
+      - name: country_code
+        tests:
+          - not_null
+
+      - name: indicator_code
+        tests:
+          - not_null
+
+      - name: observation_year
+        tests:
+          - not_null

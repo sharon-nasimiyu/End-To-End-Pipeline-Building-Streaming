@@ -1,0 +1,23 @@
+version: 2
+
+models:
+  - name: stg_economic_observations
+    description: "Cleaned and standardized economic observations."
+
+    columns:
+      - name: id
+        tests:
+          - not_null
+
+      - name: country_code
+        tests:
+          - not_null
+
+      - name: indicator_code
+        tests:
+          - not_null
+
+      - name: observation_year
+        tests:
+          - not_null
+

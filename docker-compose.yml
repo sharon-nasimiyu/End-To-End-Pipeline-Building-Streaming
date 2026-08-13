@@ -1,0 +1,289 @@
+services:
+
+  # ============================================================
+  # ZOOKEEPER
+  # ============================================================
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.7.7
+    container_name: assessment-zookeeper
+    restart: unless-stopped
+
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+    ports:
+      - "2181:2181"
+
+
+  # ============================================================
+  # KAFKA
+  # ============================================================
+
+  kafka:
+    image: confluentinc/cp-kafka:7.7.7
+    container_name: assessment-kafka
+    restart: unless-stopped
+
+    depends_on:
+      - zookeeper
+
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+
+    ports:
+      - "9092:9092"
+
+
+  # ============================================================
+  # SCHEMA REGISTRY
+  # ============================================================
+
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.7.7
+    container_name: assessment-schema-registry
+    restart: unless-stopped
+
+    depends_on:
+      - kafka
+
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka:29092
+
+    ports:
+      - "8081:8081"
+
+
+  # ============================================================
+  # POSTGRESQL
+  # ============================================================
+
+  postgres:
+    image: postgres:16
+    container_name: assessment-postgres
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+    command:
+      - postgres
+      - -c
+      - wal_level=logical
+      - -c
+      - max_wal_senders=10
+      - -c
+      - max_replication_slots=10
+
+    ports:
+      - "${POSTGRES_PORT}:5432"
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+
+  # ============================================================
+  # CLICKHOUSE
+  # ============================================================
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:25.8
+    container_name: assessment-clickhouse
+    restart: unless-stopped
+
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+
+    ports:
+      - "${CLICKHOUSE_HTTP_PORT}:8123"
+      - "${CLICKHOUSE_NATIVE_PORT}:9000"
+
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - clickhouse_logs:/var/log/clickhouse-server
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+
+  # ============================================================
+  # DEBEZIUM AVRO CONNECT
+  # ============================================================
+
+  debezium:
+    build:
+      context: .
+      dockerfile: Dockerfile.debezium
+    image: assessment-debezium:3.0-avro
+    container_name: assessment-debezium
+    restart: unless-stopped
+
+    depends_on:
+      - kafka
+      - postgres
+      - schema-registry
+
+    environment:
+      BOOTSTRAP_SERVERS: kafka:29092
+      GROUP_ID: "1"
+
+      CONFIG_STORAGE_TOPIC: debezium_connect_configs
+      OFFSET_STORAGE_TOPIC: debezium_connect_offsets
+      STATUS_STORAGE_TOPIC: debezium_connect_status
+
+      CONFIG_STORAGE_REPLICATION_FACTOR: "1"
+      OFFSET_STORAGE_REPLICATION_FACTOR: "1"
+      STATUS_STORAGE_REPLICATION_FACTOR: "1"
+
+      KEY_CONVERTER: io.confluent.connect.avro.AvroConverter
+      KEY_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+
+      VALUE_CONVERTER: io.confluent.connect.avro.AvroConverter
+      VALUE_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+
+      REST_ADVERTISED_HOST_NAME: debezium
+      REST_PORT: 8083
+
+    ports:
+      - "8083:8083"
+
+
+  # ============================================================
+  # SIMPLE JSON DEBEZIUM CONNECT
+  # ============================================================
+
+  debezium-simple:
+    build:
+      context: .
+      dockerfile: Dockerfile.debezium-simple
+    image: assessment-debezium-simple:3.0
+    container_name: assessment-debezium-simple
+    restart: unless-stopped
+
+    depends_on:
+      - kafka
+      - postgres
+
+    environment:
+      BOOTSTRAP_SERVERS: kafka:29092
+      GROUP_ID: "2"
+
+      CONFIG_STORAGE_TOPIC: debezium_simple_connect_configs
+      OFFSET_STORAGE_TOPIC: debezium_simple_connect_offsets
+      STATUS_STORAGE_TOPIC: debezium_simple_connect_status
+
+      CONFIG_STORAGE_REPLICATION_FACTOR: "1"
+      OFFSET_STORAGE_REPLICATION_FACTOR: "1"
+      STATUS_STORAGE_REPLICATION_FACTOR: "1"
+
+      KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      KEY_CONVERTER_SCHEMAS_ENABLE: "false"
+
+      VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+
+      REST_ADVERTISED_HOST_NAME: debezium-simple
+      REST_PORT: 8083
+
+    ports:
+      - "8084:8083"
+
+
+  # ============================================================
+  # AIRFLOW
+    # ============================================================
+  airflow:
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
+    image: assessment-airflow:2.10.5-dbt
+    container_name: assessment-airflow
+    restart: unless-stopped
+
+    environment:
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__EXECUTOR: SequentialExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
+
+    ports:
+      - "8080:8080"
+
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./dbt:/opt/dbt
+      - ./airflow:/opt/airflow
+      - ${HOME}/.dbt:/home/airflow/.dbt
+
+    command: standalone
+
+    depends_on:
+      - kafka
+      - postgres
+      - debezium-simple
+      - clickhouse
+
+  # ============================================================
+  # GRAFANA
+  # ============================================================
+
+  grafana:
+    image: grafana/grafana:12.1.0
+    container_name: assessment-grafana
+    restart: unless-stopped
+
+    environment:
+      GF_INSTALL_PLUGINS: grafana-clickhouse-datasource
+
+    ports:
+      - "3000:3000"
+
+    volumes:
+      - grafana_data:/var/lib/grafana
+
+    depends_on:
+      - clickhouse
+
+# ============================================================
+# VOLUMES
+# ============================================================
+
+volumes:
+  postgres_data:
+  clickhouse_data:
+  clickhouse_logs:
+  grafana_data:

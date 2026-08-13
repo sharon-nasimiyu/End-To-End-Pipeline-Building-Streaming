@@ -1,0 +1,15 @@
+name: 'economic_pipeline'
+version: '1.0.0'
+config-version: 2
+
+profile: 'economic_pipeline'
+
+model-paths: ["models"]
+test-paths: ["tests"]
+
+models:
+  economic_pipeline:
+    staging:
+      +materialized: view
+    marts:
+      +materialized: table

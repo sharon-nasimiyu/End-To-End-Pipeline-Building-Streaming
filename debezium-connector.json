@@ -1,0 +1,30 @@
+{
+  "name": "cdc_economic_observations",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "tasks.max": "1",
+
+    "database.hostname": "postgres",
+    "database.port": "5432",
+    "database.user": "assessment_user",
+    "database.password": "assessment_password",
+    "database.dbname": "assessment",
+
+    "topic.prefix": "cdc",
+
+    "plugin.name": "pgoutput",
+    "slot.name": "cdc_economic_observations",
+    "publication.name": "cdc_economic_observations",
+    "publication.autocreate.mode": "filtered",
+
+    "schema.include.list": "public",
+    "table.include.list": "public.economic_observations",
+
+    "snapshot.mode": "initial",
+
+    "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "key.converter.schemas.enable": "false",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter.schemas.enable": "false"
+  }
+}
